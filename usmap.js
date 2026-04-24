@@ -126,21 +126,40 @@ var simplemaps_usmap_mapinfo={map_name:'us',initial_view:{x:-20,y:-10,x2:980,y2:
     }
   }
 
-  function disableLabelPointerEvents() {
+  function normalizeMapPointerEvents() {
     var map = window.simplemaps_usmap;
-    if (!map || !map.labels) {
+    var container = getMapContainer();
+    var svg = container ? container.querySelector("svg") : null;
+    var stateNodes = [];
+    var stateId;
+
+    if (!map || !map.states || !svg) {
       return;
     }
 
-    var labelId;
-    for (labelId in map.labels) {
+    for (stateId in map.states) {
       if (
-        Object.prototype.hasOwnProperty.call(map.labels, labelId) &&
-        map.labels[labelId] &&
-        map.labels[labelId].node &&
-        map.labels[labelId].node.style
+        Object.prototype.hasOwnProperty.call(map.states, stateId) &&
+        map.states[stateId] &&
+        map.states[stateId].node
       ) {
-        map.labels[labelId].node.style.pointerEvents = "none";
+        stateNodes.push(map.states[stateId].node);
+      }
+    }
+
+    var allSvgNodes = svg.querySelectorAll("*");
+    var i;
+    var node;
+
+    for (i = 0; i < allSvgNodes.length; i += 1) {
+      node = allSvgNodes[i];
+      node.style.pointerEvents = "none";
+    }
+
+    for (i = 0; i < stateNodes.length; i += 1) {
+      node = stateNodes[i];
+      if (node && node.style) {
+        node.style.pointerEvents = "auto";
       }
     }
   }
@@ -272,7 +291,7 @@ var simplemaps_usmap_mapinfo={map_name:'us',initial_view:{x:-20,y:-10,x2:980,y2:
     chainHook("complete", function () {
       disableStateUrls();
       ensureMapResponsive();
-      disableLabelPointerEvents();
+      normalizeMapPointerEvents();
     });
 
     chainHook("over_state", function (stateId) {
@@ -317,7 +336,7 @@ var simplemaps_usmap_mapinfo={map_name:'us',initial_view:{x:-20,y:-10,x2:980,y2:
 
     window.addEventListener("resize", ensureMapResponsive);
     ensureMapResponsive();
-    disableLabelPointerEvents();
+    normalizeMapPointerEvents();
     return true;
   }
 
