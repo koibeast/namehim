@@ -910,14 +910,45 @@
       window.location.hash = '#/browse';
     }
 
-    function setupReportActionHandler() {
-      reportsBody.addEventListener('click', function onTableClick(event) {
-        const button = event.target.closest('.report-entry-btn');
-        if (!button) return;
-        const reportId = button.getAttribute('data-report-id');
-        window.alert('Entry #' + reportId + ' has been flagged for review.');
-      });
+    async function setupReportActionHandler() {
+  reportsBody.addEventListener('click', async function onTableClick(event) {
+    const button = event.target.closest('.report-entry-btn');
+    if (!button) return;
+    const reportId = button.getAttribute('data-report-id');
+    if (!reportId) return;
+
+    // Optional: get submitter_uuid to track who flagged (but not required)
+    const submitterId = localStorage.getItem('submitter_id') || 'anonymous';
+
+    // Disable button briefly to prevent double-click spam
+    const originalText = button.textContent;
+    button.textContent = 'Submitting...';
+    button.disabled = true;
+
+    try {
+      const { error } = await supabaseClient
+        .from('report_flags')
+        .insert({
+          report_id: parseInt(reportId, 10),
+          created_at: new Date().toISOString()
+          // You can also add: flagged_by: submitterId
+        });
+
+      if (error) {
+        console.error('Flag insert error:', error);
+        alert('Could not flag entry. Please try again later.');
+      } else {
+        alert('Entry #' + reportId + ' has been flagged for review. Thank you.');
+      }
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      alert('An error occurred. Please try again.');
+    } finally {
+      button.textContent = originalText;
+      button.disabled = false;
     }
+  });
+}
 
     function startRealtimeUpdates() {
       supabaseClient
