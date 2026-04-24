@@ -285,6 +285,51 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Mobile-friendly table: cards instead of columns */
+@media (max-width: 760px) {
+  .table-wrap {
+    overflow-x: visible;
+  }
+  table, thead, tbody, tr, th, td {
+    display: block;
+  }
+  thead {
+    display: none;  /* hide original headers */
+  }
+  tr {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 0.7rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+  }
+  td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  td:last-child {
+    border-bottom: none;
+  }
+  td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #93c5fd;
+    width: 40%;
+    flex-shrink: 0;
+  }
+  /* Individual column labels */
+  td:nth-of-type(1)::before { content: "Name"; }
+  td:nth-of-type(2)::before { content: "Location"; }
+  td:nth-of-type(3)::before { content: "Categories"; }
+  td:nth-of-type(4)::before { content: "Actions"; }
+}
+    
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
