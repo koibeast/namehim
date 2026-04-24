@@ -721,8 +721,16 @@
       localStorage.setItem(RATE_LIMIT_STORAGE_KEY, JSON.stringify(timestamps));
     }
 
+    function formatCountryForBrowse(country) {
+      const normalizedCountry = String(country || '').trim().toLowerCase();
+      if (normalizedCountry === 'united states of america') {
+        return 'USA';
+      }
+      return country;
+    }
+
     function formatLocation(city, state, country) {
-      const parts = [city, state, country]
+      const parts = [city, state, formatCountryForBrowse(country)]
         .map((part) => (part || '').trim())
         .filter((part) => part.length > 0)
         .map((part) => escapeHTML(part));
