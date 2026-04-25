@@ -888,6 +888,34 @@
         .join(' ');
     }
 
+    const COUNTRY_FILTER_ALIASES = {
+      'united states': 'united states',
+      'united states america': 'united states',
+      'u s': 'united states',
+      'u s a': 'united states',
+      usa: 'united states',
+      us: 'united states'
+    };
+
+    function normalizeCountryForFiltering(value) {
+      const normalized = String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/['’`]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\b(the|of|and|republic|state|islands?)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      return COUNTRY_FILTER_ALIASES[normalized] || normalized;
+    }
+
+    function isUnitedStatesCountryValue(value) {
+      return normalizeCountryForFiltering(value) === 'united states';
+    }
+
 
     function populateBrowseStateSelect() {
       if (!browseStateSelect) {
@@ -926,7 +954,7 @@
       }
 
       const selectedCountry = String(browseCountrySelect.value || '').trim().toLowerCase();
-      const shouldShowStateFilter = !selectedCountry || selectedCountry === 'united states of america';
+      const shouldShowStateFilter = !selectedCountry || isUnitedStatesCountryValue(selectedCountry);
 
       browseStateSelectWrap.classList.toggle('hidden', !shouldShowStateFilter);
 
@@ -1316,11 +1344,11 @@ function filterReportsByState(stateFullName) {
         const blob = [report.name, report.city, report.state, report.country]
           .map((item) => String(item || '').toLowerCase())
           .join(' ');
-        const reportCountry = String(report.country || '').trim().toLowerCase();
+        const reportCountry = normalizeCountryForFiltering(report.country);
         const reportState = String(report.state || '').trim().toLowerCase();
 
         const matchesQuery = !query || blob.includes(query);
-        const matchesCountry = !selectedCountry || reportCountry === selectedCountry;
+        const matchesCountry = !selectedCountry || reportCountry === normalizeCountryForFiltering(selectedCountry);
         const matchesState = !selectedState || reportState === selectedState;
 
         return matchesQuery && matchesCountry && matchesState;
