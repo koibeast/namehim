@@ -459,6 +459,28 @@
   }
 
 }
+
+    .stories-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+.story-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  padding: 1rem;
+}
+.story-card h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--accent);
+}
+.story-meta {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
     
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -478,6 +500,7 @@
       <nav>
         <a href="#/browse" class="nav-link" data-route="#/browse">Browse</a>
         <a href="#/submit" class="nav-link" data-route="#/submit">Submit</a>
+        <a href="#/voices" class="nav-link" data-route="#/community">Community</a>
         <a href="about.html" class="nav-link">About</a>
       </nav>
     </div>
@@ -775,6 +798,35 @@
         </form>
         <p id="submit-message" class="message"></p>
       </section>
+
+      <section id="page-community" class="page">
+  <h2>Community Voices</h2>
+  <p>Share your story anonymously, without names. This is a space for hope, encouragement, and survivor experiences. No names of abusers or yourself. Your post will be reviewed before appearing.</p>
+  
+  <form id="story-form" class="panel" style="max-width: 720px;">
+    <div class="row">
+      <label for="story-title">Title (optional)</label>
+      <input id="story-title" type="text" maxlength="100" placeholder="e.g., A message of hope" />
+    </div>
+    <div class="row">
+      <label for="story-content">Your story *</label>
+      <textarea id="story-content" rows="6" maxlength="2000" required placeholder="Share your experience (no names, no identifying details)..."></textarea>
+    </div>
+    <div class="row">
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADCC51BDmfY6JgSc" data-theme="dark"></div>
+      <p id="story-turnstile-warning" class="warning hidden">Please complete the CAPTCHA.</p>
+    </div>
+    <p id="story-rate-warning" class="message error hidden">You've reached the limit. Please wait before submitting another story.</p>
+    <button id="submit-story-btn" class="primary" type="submit">Submit story</button>
+  </form>
+  <p id="story-message" class="message"></p>
+
+  <h3 style="margin-top: 2rem;">Approved stories</h3>
+  <div id="stories-container" class="stories-grid">
+    <p>Loading stories...</p>
+  </div>
+</section>
+      
     </div>
   </main>
 
@@ -789,10 +841,11 @@
   </footer>
 
   <script>
-    const ROUTES = {
-      '#/browse': 'page-browse',
-      '#/submit': 'page-submit'
-    };
+    const routes = {
+  '#/browse': 'page-browse',
+  '#/submit': 'page-submit',
+  '#/voices': 'page-community'
+};
 
     const CATEGORIES = [
       'emotional abuse',
@@ -839,6 +892,16 @@
     const browsePagination = document.getElementById('browse-pagination');
     const REPORTS_PER_PAGE = 100;
     const DEFAULT_PAGE_TITLE = document.title || 'NameHim';
+    const storyForm = document.getElementById('story-form');
+    const storyTitle = document.getElementById('story-title');
+    const storyContent = document.getElementById('story-content');
+    const storySubmitBtn = document.getElementById('submit-story-btn');
+    const storyMessage = document.getElementById('story-message');
+    const storyTurnstileWarning = document.getElementById('story-turnstile-warning');
+    const storyRateWarning = document.getElementById('story-rate-warning');
+    const storiesContainer = document.getElementById('stories-container');
+
+    const STORY_RATE_LIMIT_KEY = 'story_submission_timestamps';
 
     const US_STATES = [
       'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
@@ -1178,6 +1241,30 @@ function filterReportsByState(stateFullName) {
       updateBrowseViewFromRoute();
     }
 
+    function renderRoute() {
+  const route = getCurrentRoute();
+
+  if (getHashPath() !== route) {
+    window.location.hash = route;
+    return;
+  }
+
+  pageBrowse.classList.toggle('active', route === '#/browse');
+  pageSubmit.classList.toggle('active', route === '#/submit');
+  const voicesPage = document.getElementById('page-voices');
+  if (voicesPage) voicesPage.classList.toggle('active', route === '#/voices');
+
+  document.querySelectorAll('[data-route]').forEach((link) => {
+    link.classList.toggle('active', link.getAttribute('data-route') === route);
+  });
+
+  updateBrowseViewFromRoute();
+
+  if (route === '#/voices') {
+    loadApprovedStories();
+  }
+}
+
     function normalizeTimestamps(values) {
       const cutoff = Date.now() - (60 * 60 * 1000);
       const cleaned = (Array.isArray(values) ? values : [])
@@ -1213,6 +1300,25 @@ function filterReportsByState(stateFullName) {
       timestamps.push(Date.now());
       localStorage.setItem(RATE_LIMIT_STORAGE_KEY, JSON.stringify(timestamps));
     }
+
+    function getStorySubmissionHistory() {
+  const raw = localStorage.getItem(STORY_RATE_LIMIT_KEY);
+  const arr = raw ? JSON.parse(raw) : [];
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  const recent = arr.filter(ts => Number(ts) > cutoff);
+  localStorage.setItem(STORY_RATE_LIMIT_KEY, JSON.stringify(recent));
+  return recent;
+}
+
+function canSubmitStory() {
+  return getStorySubmissionHistory().length < 3;
+}
+
+function addStoryTimestamp() {
+  const timestamps = getStorySubmissionHistory();
+  timestamps.push(Date.now());
+  localStorage.setItem(STORY_RATE_LIMIT_KEY, JSON.stringify(timestamps));
+}
 
     function formatCountryForBrowse(country) {
       const normalizedCountry = String(country || '').trim().toLowerCase();
@@ -1408,6 +1514,39 @@ function filterReportsByState(stateFullName) {
   }
 }
 
+    async function loadApprovedStories() {
+  storiesContainer.innerHTML = '<p>Loading stories...</p>';
+  const { data, error } = await supabaseClient
+    .from('stories')
+    .select('id, title, content, created_at')
+    .eq('is_approved', true)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    storiesContainer.innerHTML = '<p>Error loading stories.</p>';
+    return;
+  }
+
+  if (!data.length) {
+    storiesContainer.innerHTML = '<p>No approved stories yet. Check back soon.</p>';
+    return;
+  }
+
+  let html = '';
+  for (const story of data) {
+    const date = new Date(story.created_at).toLocaleDateString();
+    const titleHtml = story.title ? `<h4>${escapeHTML(story.title)}</h4>` : '';
+    html += `
+      <div class="story-card">
+        ${titleHtml}
+        <p>${escapeHTML(story.content)}</p>
+        <div class="story-meta">— Anonymous, ${date}</div>
+      </div>
+    `;
+  }
+  storiesContainer.innerHTML = html;
+}
+
     function getTurnstileToken() {
       const tokenField = document.querySelector('[name="cf-turnstile-response"]');
       return tokenField && tokenField.value ? tokenField.value : '';
@@ -1436,6 +1575,55 @@ function filterReportsByState(stateFullName) {
         submitMessage.className = 'message error';
         return;
       }
+
+      async function submitStory(event) {
+  event.preventDefault();
+  storyMessage.textContent = '';
+  storyTurnstileWarning.classList.add('hidden');
+
+  if (!canSubmitStory()) {
+    storyRateWarning.classList.remove('hidden');
+    return;
+  }
+
+  const token = getTurnstileToken();
+  if (!token) {
+    storyTurnstileWarning.classList.remove('hidden');
+    return;
+  }
+
+  const title = storyTitle.value.trim() || null;
+  const content = storyContent.value.trim();
+  if (!content) {
+    storyMessage.textContent = 'Please write your story.';
+    storyMessage.className = 'message error';
+    return;
+  }
+
+  storySubmitBtn.disabled = true;
+
+  const payload = {
+    title,
+    content,
+    submitter_uuid: localStorage.getItem('submitter_id')
+  };
+
+  const { error } = await supabaseClient.from('stories').insert(payload);
+
+  if (error) {
+    storyMessage.textContent = `Submission failed: ${error.message}`;
+    storyMessage.className = 'message error';
+    storySubmitBtn.disabled = false;
+    return;
+  }
+
+  addStoryTimestamp();
+  storyMessage.textContent = 'Thank you. Your story has been submitted for review.';
+  storyMessage.className = 'message success';
+  storyForm.reset();
+  if (window.turnstile) window.turnstile.reset();
+  storySubmitBtn.disabled = false;
+}
 
       const token = getTurnstileToken();
       if (!token) {
@@ -1709,6 +1897,7 @@ function filterReportsByState(stateFullName) {
         }
       });
       reportForm.addEventListener('submit', handleSubmit);
+      storyForm.addEventListener('submit', submitStory);
     }
 
    // --- World Map Toggle (similar to US Map) ---
