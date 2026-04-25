@@ -21,7 +21,10 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
   var brandingObserver = null;
   var cleanupIntervalId = null;
   var COUNTRY_COUNT_ALIASES = {
-    "united states of america": "united states",
+    "united states": "united states",
+    "united states america": "united states",
+    "u s": "united states",
+    "u s a": "united states",
     usa: "united states",
     us: "united states"
   };
