@@ -66,6 +66,14 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
       : countryId;
   }
 
+  function getRegionName(regionId) {
+    var mapdata = window.simplemaps_worldmap_mapdata || {};
+    var regions = mapdata.regions || {};
+    return regions[regionId] && regions[regionId].name
+      ? regions[regionId].name
+      : regionId;
+  }
+
   function getCountryReportCount(countryName) {
     var reports = Array.isArray(window.allReports) ? window.allReports : [];
     var target = normalizeText(countryName);
@@ -74,6 +82,33 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
 
     for (i = 0; i < reports.length; i += 1) {
       if (normalizeText(reports[i] && reports[i].country) === target) {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
+  function getRegionReportCount(regionId) {
+    var reports = Array.isArray(window.allReports) ? window.allReports : [];
+    var mapdata = window.simplemaps_worldmap_mapdata || {};
+    var regions = mapdata.regions || {};
+    var states = (regions[regionId] && regions[regionId].states) || [];
+    var countrySpecific = mapdata.state_specific || {};
+    var countryLookup = {};
+    var i;
+    var countryId;
+    var count = 0;
+
+    for (i = 0; i < states.length; i += 1) {
+      countryId = states[i];
+      if (countrySpecific[countryId] && countrySpecific[countryId].name) {
+        countryLookup[normalizeText(countrySpecific[countryId].name)] = true;
+      }
+    }
+
+    for (i = 0; i < reports.length; i += 1) {
+      if (countryLookup[normalizeText(reports[i] && reports[i].country)]) {
         count += 1;
       }
     }
@@ -193,6 +228,19 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
     tooltip.style.display = "block";
   }
 
+  function showRegionTooltip(regionId) {
+    var tooltip = ensureTooltip();
+    var regionName = getRegionName(regionId);
+    var count = getRegionReportCount(regionId);
+    tooltip.innerHTML =
+      "<div>" +
+      escapeHtml(regionName) +
+      " <span style='opacity:.8'>(click to select individual countries)</span></div><div>Reports: " +
+      count +
+      "</div>";
+    tooltip.style.display = "block";
+  }
+
   function hideTooltip() {
     ensureTooltip().style.display = "none";
   }
@@ -304,8 +352,26 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
     }
 
     chainHook("complete", function () {
+      var regionId;
+
       disableCountryUrls();
       ensureMapLayout();
+
+      if (map && map.regions) {
+        for (regionId in map.regions) {
+          if (
+            Object.prototype.hasOwnProperty.call(map.regions, regionId) &&
+            map.regions[regionId] &&
+            map.regions[regionId].attr
+          ) {
+            map.regions[regionId].attr({
+              cursor: "pointer",
+              fill: "none",
+              "fill-opacity": 0
+            });
+          }
+        }
+      }
     });
 
     chainHook("over_state", function (countryId) {
@@ -319,6 +385,26 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
         setCountryFill(countryId, ACTIVE_COUNTRY_COLOR);
       } else {
         setCountryFill(countryId, DEFAULT_COUNTRY_COLOR);
+      }
+      hideTooltip();
+    });
+
+    chainHook("over_region", function (regionId) {
+      if (map && map.regions && map.regions[regionId] && map.regions[regionId].attr) {
+        map.regions[regionId].attr({
+          fill: HOVER_COUNTRY_COLOR,
+          "fill-opacity": 0.28
+        });
+      }
+      showRegionTooltip(regionId);
+    });
+
+    chainHook("out_region", function (regionId) {
+      if (map && map.regions && map.regions[regionId] && map.regions[regionId].attr) {
+        map.regions[regionId].attr({
+          fill: "none",
+          "fill-opacity": 0
+        });
       }
       hideTooltip();
     });
