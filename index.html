@@ -586,6 +586,20 @@
   border-radius: 0.7rem;
   padding: 1rem;
 }
+.story-card-header {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 0.65rem;
+}
+.story-category {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
 .story-card h4 {
   margin: 0 0 0.5rem 0;
   color: var(--accent);
@@ -2307,9 +2321,10 @@ async function loadMapStats() {
       else if (categoryValue === 'Call to Action') categoryClass = 'story-category-calltoaction';
       else if (categoryValue === 'Question / Discussion') categoryClass = 'story-category-question';
       const categoryHtml = `<span class="story-category ${categoryClass}">${escapeHTML(categoryValue)}</span>`;
-      const titleHtml = story.title ? `<h4>${categoryHtml} ${escapeHTML(story.title)}</h4>` : `<h4>${categoryHtml}</h4>`;
+      const titleHtml = story.title ? `<h4>${escapeHTML(story.title)}</h4>` : '';
       return `
       <div class="story-card">
+        <div class="story-card-header">${categoryHtml}</div>
         ${titleHtml}
         <p>${escapeHTML(story.content)}</p>
         <div class="story-meta">— Anonymous, ${submittedAt}</div>
