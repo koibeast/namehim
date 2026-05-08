@@ -1,47 +1,205 @@
--- NameHim Supabase schema and policies (updated: no description column)
+-- NameHim Supabase schema and policies (security-hardened)
 
 create table if not exists public.reports (
   id serial primary key,
   name text not null,
   city text not null,
-  state varchar(10),
+  state text,
   country text not null,
   categories text[] not null,
   created_at timestamptz not null default now(),
   submitter_uuid text not null
 );
 
+-- Ensure core report fields cannot be blank and stay within expected lengths.
+alter table public.reports
+  drop constraint if exists reports_name_check,
+  drop constraint if exists reports_name_letters_check,
+  drop constraint if exists reports_city_check,
+  drop constraint if exists reports_city_letters_check,
+  drop constraint if exists reports_state_check,
+  drop constraint if exists reports_state_letters_check,
+  drop constraint if exists reports_country_check,
+  drop constraint if exists reports_country_letters_check,
+  drop constraint if exists reports_submitter_uuid_check;
+
+alter table public.reports
+  add constraint reports_name_check
+    check (char_length(btrim(name)) between 1 and 20 and octet_length(name) <= 80),
+  add constraint reports_name_letters_check
+    check (btrim(name) ~ '^[[:alpha:][:space:]''.-]+$'),
+  add constraint reports_city_check
+    check (char_length(btrim(city)) between 1 and 20 and octet_length(city) <= 80),
+  add constraint reports_city_letters_check
+    check (btrim(city) ~ '^[[:alpha:][:space:]''.-]+$'),
+  add constraint reports_state_check
+    check (state is null or (char_length(btrim(state)) between 1 and 20 and octet_length(state) <= 80)),
+  add constraint reports_state_letters_check
+    check (state is null or btrim(state) ~ '^[[:alpha:][:space:]''.-]+$'),
+  add constraint reports_country_check
+    check (char_length(btrim(country)) between 1 and 20 and octet_length(country) <= 80),
+  add constraint reports_country_letters_check
+    check (btrim(country) ~ '^[[:alpha:][:space:]''.-]+$'),
+  add constraint reports_submitter_uuid_check
+    check (char_length(btrim(submitter_uuid)) between 16 and 100);
+
+-- Enforce category integrity on inserts/updates.
+alter table public.reports
+  drop constraint if exists reports_categories_count_check,
+  drop constraint if exists reports_categories_allowed_values_check;
+
+alter table public.reports
+  add constraint reports_categories_count_check
+    check (array_length(categories, 1) between 1 and 8),
+  add constraint reports_categories_allowed_values_check
+    check (
+      categories <@ array[
+        'emotional abuse',
+        'physical abuse',
+        'stalking',
+        'sexual assault',
+        'sexual harassment',
+        'harrassment',
+        'rape',
+        'pedo'
+      ]::text[]
+    );
+
+create index if not exists reports_created_at_idx on public.reports (created_at desc);
+create index if not exists reports_submitter_uuid_idx on public.reports (submitter_uuid);
+
 alter table public.reports enable row level security;
 
--- Public read access
-create policy if not exists "Public can read reports"
+-- Public read access.
+drop policy if exists "Public can read reports" on public.reports;
+create policy "Public can read reports"
 on public.reports
 for select
 using (true);
 
--- Public insert access (client-side Turnstile + rate limiting; server-side verification recommended for production)
-create policy if not exists "Public can insert reports"
+-- Public insert access with server-side anti-spam limits.
+-- NOTE: This is still weaker than server-side CAPTCHA verification through an Edge Function.
+drop policy if exists "Public can insert reports" on public.reports;
+create policy "Public can insert reports"
 on public.reports
 for insert
 to anon, authenticated
-with check (true);
+with check (
+  char_length(btrim(name)) between 1 and 20
+  and btrim(name) ~ '^[[:alpha:][:space:]''.-]+$'
+  and octet_length(name) <= 80
+  and char_length(btrim(city)) between 1 and 20
+  and btrim(city) ~ '^[[:alpha:][:space:]''.-]+$'
+  and octet_length(city) <= 80
+  and (state is null or char_length(btrim(state)) between 1 and 20)
+  and (state is null or btrim(state) ~ '^[[:alpha:][:space:]''.-]+$')
+  and (state is null or octet_length(state) <= 80)
+  and char_length(btrim(country)) between 1 and 20
+  and btrim(country) ~ '^[[:alpha:][:space:]''.-]+$'
+  and octet_length(country) <= 80
+  and char_length(btrim(submitter_uuid)) between 16 and 100
+  and array_length(categories, 1) between 1 and 8
+  and categories <@ array[
+    'emotional abuse',
+    'physical abuse',
+    'stalking',
+    'sexual assault',
+    'sexual harassment',
+    'harrassment',
+    'rape',
+    'pedo'
+  ]::text[]
+  and (
+    select count(*)
+    from public.reports r
+    where r.submitter_uuid = reports.submitter_uuid
+      and r.created_at > (now() - interval '1 hour')
+  ) < 3
+);
 
--- Optional table for future moderation reports
+-- Community stories table and policies (used by the Community page).
+create table if not exists public.stories (
+  id bigint generated by default as identity primary key,
+  title text,
+  content text not null,
+  is_approved boolean not null default false,
+  created_at timestamptz not null default now(),
+  submitter_uuid text not null
+);
+
+alter table public.stories
+  drop constraint if exists stories_title_check,
+  drop constraint if exists stories_content_check,
+  drop constraint if exists stories_submitter_uuid_check;
+
+alter table public.stories
+  add constraint stories_title_check
+    check (title is null or char_length(btrim(title)) between 1 and 1000),
+  add constraint stories_content_check
+    check (char_length(btrim(content)) between 1 and 1000),
+  add constraint stories_submitter_uuid_check
+    check (char_length(btrim(submitter_uuid)) between 16 and 100);
+
+create index if not exists stories_created_at_idx on public.stories (created_at desc);
+create index if not exists stories_submitter_uuid_idx on public.stories (submitter_uuid);
+
+alter table public.stories enable row level security;
+
+drop policy if exists "Public can read approved stories" on public.stories;
+create policy "Public can read approved stories"
+on public.stories
+for select
+using (is_approved = true);
+
+drop policy if exists "Public can insert stories" on public.stories;
+create policy "Public can insert stories"
+on public.stories
+for insert
+to anon, authenticated
+with check (
+  (title is null or char_length(btrim(title)) between 1 and 1000)
+  and char_length(btrim(content)) between 1 and 1000
+  and char_length(btrim(submitter_uuid)) between 16 and 100
+  and (
+    select count(*)
+    from public.stories s
+    where s.submitter_uuid = stories.submitter_uuid
+      and s.created_at > (now() - interval '1 hour')
+  ) < 3
+);
+
+-- Moderation flags table.
 create table if not exists public.report_flags (
   id bigint generated by default as identity primary key,
   report_id bigint not null references public.reports(id) on delete cascade,
+  reason text,
+  flagged_by text not null,
   created_at timestamptz not null default now()
 );
 
+alter table public.report_flags
+  drop constraint if exists report_flags_reason_check,
+  drop constraint if exists report_flags_flagged_by_check;
+
+alter table public.report_flags
+  add constraint report_flags_reason_check
+    check (reason is null or char_length(btrim(reason)) <= 250),
+  add constraint report_flags_flagged_by_check
+    check (char_length(btrim(flagged_by)) between 3 and 100);
+
+create index if not exists report_flags_report_id_idx on public.report_flags (report_id);
+create index if not exists report_flags_flagged_by_idx on public.report_flags (flagged_by);
+
 alter table public.report_flags enable row level security;
 
-create policy if not exists "Public can insert report flags"
+drop policy if exists "Public can insert report flags" on public.report_flags;
+create policy "Public can insert report flags"
 on public.report_flags
 for insert
 to anon, authenticated
-with check (true);
+with check (
+  char_length(btrim(flagged_by)) between 3 and 100
+);
 
-create policy if not exists "Public can read report flags"
-on public.report_flags
-for select
-using (true);
+-- Keep moderation metadata private by default.
+drop policy if exists "Public can read report flags" on public.report_flags;

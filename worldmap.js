@@ -23,6 +23,7 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
   var COUNTRY_COUNT_ALIASES = {
     "united states": "united states",
     "united states america": "united states",
+    "united states ame": "united states",
     "u s": "united states",
     "u s a": "united states",
     usa: "united states",
@@ -106,9 +107,13 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
   function getCountryName(countryId) {
     var mapdata = window.simplemaps_worldmap_mapdata || {};
     var countrySpecific = mapdata.state_specific || {};
-    return countrySpecific[countryId] && countrySpecific[countryId].name
+    var countryName = countrySpecific[countryId] && countrySpecific[countryId].name
       ? countrySpecific[countryId].name
       : countryId;
+    if (normalizeCountryForCount(countryName) === "united states") {
+      return "USA";
+    }
+    return countryName;
   }
 
   function getRegionName(regionId) {
@@ -125,11 +130,22 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
   }
 
   function getCountryReportCount(countryName) {
-    var reports = Array.isArray(window.allReports) ? window.allReports : [];
+    var counts = window.countryCounts && typeof window.countryCounts === "object" ? window.countryCounts : null;
     var target = normalizeCountryForCount(countryName);
     var count = 0;
+    var reports;
     var i;
 
+    if (counts) {
+      Object.keys(counts).forEach(function (key) {
+        if (normalizeCountryForCount(key) === target) {
+          count += Number(counts[key]) || 0;
+        }
+      });
+      return count;
+    }
+
+    reports = Array.isArray(window.allReports) ? window.allReports : [];
     for (i = 0; i < reports.length; i += 1) {
       if (normalizeCountryForCount(reports[i] && reports[i].country) === target) {
         count += 1;
@@ -141,6 +157,7 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
 
   function getRegionReportCount(regionId) {
     var reports = Array.isArray(window.allReports) ? window.allReports : [];
+    var counts = window.countryCounts && typeof window.countryCounts === "object" ? window.countryCounts : null;
     var mapdata = window.simplemaps_worldmap_mapdata || {};
     var regions = mapdata.regions || {};
     var states = (regions[regionId] && regions[regionId].states) || [];
@@ -157,6 +174,15 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
       }
     }
 
+    if (counts) {
+      Object.keys(counts).forEach(function (key) {
+        if (countryLookup[normalizeCountryForCount(key)]) {
+          count += Number(counts[key]) || 0;
+        }
+      });
+      return count;
+    }
+
     for (i = 0; i < reports.length; i += 1) {
       if (countryLookup[normalizeCountryForCount(reports[i] && reports[i].country)]) {
         count += 1;
@@ -164,62 +190,6 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
     }
 
     return count;
-  }
-
-  function resolveCountrySelection(countryName) {
-    var select = document.getElementById("browse-country-select");
-    if (!select) {
-      return countryName;
-    }
-
-    var options = Array.prototype.slice.call(select.options || []);
-    var countryAliases = {
-      "united states": "United States of America",
-      "usa": "United States of America",
-      "us": "United States of America",
-      "russia": "Russian Federation",
-      "south korea": "Republic of Korea",
-      "north korea": "Democratic People's Republic of Korea",
-      "czech republic": "Czechia",
-      "ivory coast": "Cote d'Ivoire",
-      "cape verde": "Cabo Verde",
-      "the gambia": "Gambia",
-      "republic of congo": "Congo",
-      "democratic republic congo": "Democratic Republic of the Congo",
-      "palestine": "State of Palestine"
-    };
-
-    var exactValue = "";
-    var source = String(countryName || "").trim();
-    var normalizedSource = normalizeText(source);
-    var aliased = countryAliases[normalizedSource] || source;
-    var normalizedAliased = normalizeText(aliased);
-    var i;
-
-    for (i = 0; i < options.length; i += 1) {
-      if (String(options[i].value || "") === aliased) {
-        exactValue = String(options[i].value || "");
-        break;
-      }
-    }
-
-    if (exactValue) {
-      return exactValue;
-    }
-
-    for (i = 0; i < options.length; i += 1) {
-      if (normalizeText(options[i].value) === normalizedAliased) {
-        return String(options[i].value || "");
-      }
-    }
-
-    for (i = 0; i < options.length; i += 1) {
-      if (normalizeText(options[i].textContent) === normalizedAliased) {
-        return String(options[i].value || "");
-      }
-    }
-
-    return source;
   }
 
   function setCountryFill(countryId, color) {
@@ -384,14 +354,10 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
 
   function clearCountrySelection() {
     setSelectedCountry(null);
-    if (typeof window.setCountryDropdownValue === "function") {
-      window.setCountryDropdownValue("");
-    }
   }
 
   function selectCountry(countryId, shouldFilter) {
     var countryName;
-    var mappedCountry;
 
     if (!countryId) {
       clearCountrySelection();
@@ -399,15 +365,14 @@ var simplemaps_worldmap_mapinfo={  map_name: "world",  initial_view: {    x: 0, 
     }
 
     countryName = getCountryName(countryId);
-    mappedCountry = resolveCountrySelection(countryName);
     setSelectedCountry(countryId);
 
-    if (typeof window.setCountryDropdownValue === "function") {
-      window.setCountryDropdownValue(mappedCountry);
-    }
-
-    if (shouldFilter && typeof window.filterReportsByCountry === "function") {
-      window.filterReportsByCountry(mappedCountry);
+    if (shouldFilter) {
+      if (typeof window.filterReportsByCountryFromMap === "function") {
+        window.filterReportsByCountryFromMap(countryName);
+      } else if (typeof window.filterReportsByCountry === "function") {
+        window.filterReportsByCountry(countryName);
+      }
     }
   }
 
